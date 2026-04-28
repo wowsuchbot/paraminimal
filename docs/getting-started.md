@@ -33,7 +33,7 @@ mix ecto.setup
 ```bash
 # Start Phoenix server
 mix phx.server
-# → http://localhost:4000
+# → http://localhost:4323
 
 # Or with iex for live debugging
 iex -S mix phx.server
@@ -53,7 +53,7 @@ Required vars (for production deploy):
 |----------|---------|
 | `DATABASE_URL` | Postgres connection string |
 | `SECRET_KEY_BASE` | Phoenix encryption key (`mix phx.gen.secret`) |
-| `PORT` | Phoenix port (default 4000) |
+| `PORT` | Phoenix port (default 4323 in development) |
 
 ## Deployment
 

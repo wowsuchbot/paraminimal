@@ -129,6 +129,7 @@ defmodule Paraminimal.Composition.MotifEngineTest do
         rhythm: step1.rhythm,
         octave: 0
       }
+
       manual_result = MotifEngine.inversion(manual_tm)
 
       # Apply via chain

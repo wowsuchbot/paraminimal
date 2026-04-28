@@ -15,6 +15,7 @@ The intended architecture is:
 - Keep musical logic in pure Elixir under `lib/paraminimal/composition/`.
 - Keep scale and motif data separate from engine logic.
 - Treat SuperSonic as a first-class runtime target, even when implementation work is server-side.
+- Prefer SuperSonic `postMessage` mode for the first real integration because it does not require COOP/COEP headers. `sab` mode is lower latency but requires `Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Embedder-Policy: require-corp`.
 - The server is the source of truth. Browser code renders audio/visual state; it should not become the composer.
 
 ## Current State
@@ -25,7 +26,9 @@ As of the current implementation:
 
 - Phase 1 is complete: Phoenix foundation, scale library, scale distance metrics, LiveView dashboard, and SuperSonic runtime boundary.
 - Phase 2 is complete: UTC global time system, deterministic epoch composer, periodic LiveView updates, and epoch tests.
-- The app runs at `http://localhost:4000` with `mix phx.server`.
+- Phase 3a is complete: period-specific motifs, motif registry, canon transformations, and motif lineage tests.
+- Phase 3b is complete: deterministic motif selection in epochs, motif data in `composition_state`, and an `AudioContext` fallback motif voice.
+- The app runs at `http://localhost:4323` with `mix phx.server` unless `PORT` is set.
 - The current test suite is expected to pass with `mix test`.
 
 ## Key Files
@@ -47,7 +50,11 @@ As of the current implementation:
 - `Paraminimal.Composition.ScaleDistance`
 - `Paraminimal.Composition.TimeSystem`
 - `Paraminimal.Composition.Epoch`
+- `Paraminimal.Composition.Motif`
+- `Paraminimal.Composition.MotifEngine`
+- `Paraminimal.Composition.TransformedMotif`
 - `Paraminimal.Scales.Western`
+- `Paraminimal.Motifs`
 - `ParaminimalWeb.SessionLive`
 
 ## Runtime Flow
@@ -57,6 +64,7 @@ UTC clock
   -> Composition.TimeSystem
   -> Composition.Epoch
   -> Scales.Western + ScaleDistance
+  -> Motifs + MotifEngine
   -> SessionLive
   -> browser SuperSonic runtime hook
 ```
@@ -73,15 +81,13 @@ mix format
 
 ## Next Work
 
-The next recommended phase is Phase 3: Motifs & Audio.
+The next recommended phase is Phase 3c: Real SuperSonic Scheduling.
 
 Start with a narrow audible slice:
 
-- Add period-specific motif data.
-- Add `Paraminimal.Composition.MotifEngine`.
-- Implement motif transformations in pure Elixir.
-- Send a compact deterministic audio payload to the existing SuperSonic runtime hook.
-- Produce one drone layer and one motif voice before adding richer texture.
+- Replace the fallback oscillator path with real SuperSonic initialization and OSC scheduling.
+- Use the existing compact audio payload from `SessionLive`.
+- Produce one SuperSonic drone layer and one motif voice before adding richer texture.
 
 ## Verification Expectations
 

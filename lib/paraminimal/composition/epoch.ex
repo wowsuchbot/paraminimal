@@ -6,6 +6,10 @@ defmodule Paraminimal.Composition.Epoch do
   alias Paraminimal.Composition.Scale
   alias Paraminimal.Composition.ScaleDistance
   alias Paraminimal.Composition.TimeSystem
+  alias Paraminimal.Composition.TransformedMotif
+  alias Paraminimal.Motifs
+  alias Paraminimal.Composition.Motif
+  alias Paraminimal.Composition.MotifEngine
   alias Paraminimal.Scales.Western
 
   @type t :: %__MODULE__{
@@ -20,6 +24,8 @@ defmodule Paraminimal.Composition.Epoch do
           chord_shape: atom(),
           energy: float(),
           density: float(),
+          motif: Motif.t(),
+          transformed_motif: TransformedMotif.t(),
           distances: [ScaleDistance.t()]
         }
 
@@ -35,6 +41,8 @@ defmodule Paraminimal.Composition.Epoch do
     :chord_shape,
     :energy,
     :density,
+    :motif,
+    :transformed_motif,
     :distances
   ]
 
@@ -53,6 +61,10 @@ defmodule Paraminimal.Composition.Epoch do
     root = root_for(utc, period)
     scale = scale_for(utc, period, root)
     next_root = root_for(utc, next_period)
+    energy = profile_value(period.energy_profile, progress)
+    density = profile_value(period.density_profile, progress)
+    motif = motif_for(utc, period, energy)
+    transformed_motif = transform_motif(utc, motif)
 
     distances =
       next_period.scale_candidates
@@ -69,8 +81,10 @@ defmodule Paraminimal.Composition.Epoch do
       root: root,
       root_name: Scale.note_name(root),
       chord_shape: chord_shape_for(period, scale),
-      energy: profile_value(period.energy_profile, progress),
-      density: profile_value(period.density_profile, progress),
+      energy: energy,
+      density: density,
+      motif: motif,
+      transformed_motif: transformed_motif,
       distances: distances
     }
   end
@@ -95,6 +109,45 @@ defmodule Paraminimal.Composition.Epoch do
   defp selection_index(datetime, period, count) do
     stable_hash({epoch_id(datetime), period.key, :scale}, count)
   end
+
+  defp motif_for(datetime, period, energy) do
+    candidates =
+      period.key
+      |> Motifs.for_period()
+      |> Enum.filter(&energy_matches?(&1, energy))
+
+    candidates = if candidates == [], do: Motifs.for_period(period.key), else: candidates
+
+    Enum.at(candidates, stable_hash({epoch_id(datetime), period.key, :motif}, length(candidates)))
+  end
+
+  defp energy_matches?(%Motif{energy_range: {low, high}}, energy),
+    do: energy >= low and energy <= high
+
+  defp transform_motif(datetime, motif) do
+    operation =
+      motif.transformation_tendency
+      |> Enum.at(
+        stable_hash(
+          {epoch_id(datetime), motif.id, :operation},
+          length(motif.transformation_tendency)
+        )
+      )
+
+    MotifEngine.apply_chain(motif, [operation_for(datetime, motif, operation)])
+  end
+
+  defp operation_for(datetime, motif, :transposition) do
+    offset = stable_hash({epoch_id(datetime), motif.id, :transposition}, 5) - 2
+    {:transposition, offset}
+  end
+
+  defp operation_for(datetime, motif, :additive_permutation) do
+    {:additive_permutation,
+     stable_hash({epoch_id(datetime), motif.id, :permutation}, length(motif.rhythm))}
+  end
+
+  defp operation_for(_datetime, _motif, operation), do: {operation, nil}
 
   defp chord_shape_for(%{key: :deep_night}, _scale), do: :cluster
   defp chord_shape_for(%{key: :dawn}, _scale), do: :open_fifth

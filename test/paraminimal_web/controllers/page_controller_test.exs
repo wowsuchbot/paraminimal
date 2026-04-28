@@ -10,7 +10,9 @@ defmodule ParaminimalWeb.SessionLiveTest do
     assert html =~ "Current:"
     assert html =~ "UTC epoch"
     assert html =~ "Current UTC Epoch"
+    assert html =~ "Motif:"
+    assert html =~ "Transform"
     assert html =~ "Adjacent Relationships"
-    assert html =~ "SuperSonic boundary ready"
+    assert html =~ "Browser audio preview"
   end
 end

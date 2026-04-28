@@ -8,7 +8,7 @@ defmodule ParaminimalWeb.SessionLive do
 
   @impl true
   def mount(_params, _session, socket) do
-    if connected?(socket), do: schedule_tick()
+    if connected?(socket), do: send(self(), :tick)
 
     socket =
       socket
@@ -36,20 +36,25 @@ defmodule ParaminimalWeb.SessionLive do
   def render(assigns) do
     ~H"""
     <main class="min-h-screen bg-zinc-950 text-zinc-100">
-      <section class="mx-auto flex min-h-screen w-full max-w-6xl flex-col gap-10 px-6 py-10">
-        <div class="flex flex-col gap-4">
+      <section class="mx-auto flex min-h-screen w-full max-w-screen-2xl flex-col gap-8 px-4 py-6 sm:px-6 lg:px-8 xl:px-10">
+        <div class="rounded-3xl border border-zinc-800 bg-zinc-900/50 p-5 shadow-2xl shadow-black/30 sm:p-6 lg:p-8">
           <p class="text-sm uppercase tracking-[0.4em] text-cyan-300">Paraminimal</p>
-          <div class="grid gap-8 lg:grid-cols-[1.2fr_0.8fr]">
-            <div>
-              <h1 class="text-4xl font-semibold tracking-tight text-white md:text-6xl">
+          <div class="mt-5 grid items-stretch gap-6 xl:grid-cols-[minmax(0,1.35fr)_minmax(300px,0.85fr)_minmax(300px,0.85fr)]">
+            <div class="min-w-0 xl:col-span-1">
+              <h1 class="max-w-5xl text-4xl font-semibold tracking-tight text-white md:text-6xl xl:text-7xl">
                 Deterministic, time-synchronized, endless.
               </h1>
-              <p class="mt-5 max-w-2xl text-lg leading-8 text-zinc-300">
+              <p class="mt-5 max-w-4xl text-lg leading-8 text-zinc-300">
                 Current: {@epoch.period.name} · {@epoch.scale.name} · {root_label(@epoch)} · density {@epoch.density} · energy {@epoch.energy}
               </p>
-              <p class="mt-3 text-sm text-zinc-500">
+              <p class="mt-3 max-w-4xl text-sm leading-6 text-zinc-500">
                 UTC epoch {@epoch.id} · next: {@epoch.next_period.name} · transition zone: {format_zone(
                   @epoch.transition.zone
+                )}
+              </p>
+              <p class="mt-3 max-w-4xl text-sm leading-6 text-zinc-400">
+                Motif: {@epoch.motif.name} · {format_transformations(
+                  @epoch.transformed_motif.transformations
                 )}
               </p>
             </div>
@@ -58,66 +63,83 @@ defmodule ParaminimalWeb.SessionLive do
               id="supersonic-runtime"
               phx-hook="SuperSonicRuntime"
               data-audio-status={@audio_status}
-              class="rounded-2xl border border-cyan-400/30 bg-cyan-400/10 p-5 shadow-2xl shadow-cyan-950/40"
+              class="min-w-0 rounded-2xl border border-cyan-400/30 bg-cyan-400/10 p-5 shadow-2xl shadow-cyan-950/40"
             >
               <p class="text-xs uppercase tracking-[0.3em] text-cyan-200">Audio Runtime</p>
-              <h2 class="mt-3 text-2xl font-semibold text-white">SuperSonic boundary ready</h2>
+              <h2 class="mt-3 text-2xl font-semibold text-white">Browser audio preview</h2>
               <p class="mt-3 text-sm leading-6 text-cyan-50/80">
-                Browser audio must start from a user gesture. This button initializes the client
-                runtime boundary that will schedule OSC messages for SuperSonic.
+                Starts a simple in-browser preview from the current epoch. SuperSonic scheduling comes
+                next; its compatible mode does not require special headers.
               </p>
               <button
                 id="audio-start"
                 type="button"
-                class="mt-5 rounded-full bg-cyan-300 px-5 py-2 text-sm font-semibold text-zinc-950 transition hover:bg-cyan-200"
+                class="mt-5 inline-flex max-w-full items-center justify-center rounded-full bg-cyan-300 px-5 py-2 text-center text-sm font-semibold text-zinc-950 transition hover:bg-cyan-200"
               >
-                Start Audio Runtime
+                Start 4-Bar Preview Loop
               </button>
-              <p id="audio-runtime-status" class="mt-4 text-sm text-cyan-100">Status: waiting</p>
+              <p id="audio-runtime-status" class="mt-4 text-sm text-cyan-100">
+                Status: waiting for audio start
+              </p>
             </div>
+
+            <aside class="min-w-0 rounded-2xl border border-zinc-700/70 bg-zinc-950/70 p-5">
+              <p class="text-xs uppercase tracking-[0.3em] text-zinc-500">About</p>
+              <h2 class="mt-3 text-2xl font-semibold text-white">A living formal system.</h2>
+              <p class="mt-3 text-sm leading-6 text-zinc-300">
+                A continuous piece shaped by time first, and later by other signals still to be
+                discovered. It should keep changing on its own while many people can listen to the
+                same moment together.
+              </p>
+            </aside>
           </div>
         </div>
 
-        <section class="grid gap-6 lg:grid-cols-[0.8fr_1.2fr]">
-          <div class="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-6">
+        <section class="grid gap-6 xl:grid-cols-[minmax(420px,0.85fr)_minmax(0,1.4fr)]">
+          <div class="min-w-0 rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5 sm:p-6">
             <p class="text-xs uppercase tracking-[0.3em] text-zinc-500">Current UTC Epoch</p>
             <h2 class="mt-3 text-3xl font-semibold text-white">{@current_scale.name}</h2>
             <p class="mt-2 text-sm text-zinc-400">
               Pitch classes: {@current_scale |> Scale.pitch_classes() |> format_pitch_classes()}
             </p>
 
-            <div class="mt-6 grid grid-cols-2 gap-3 text-sm">
+            <div class="mt-6 grid grid-cols-1 gap-3 text-sm sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
               <.metric label="Period" value={@epoch.period.name} />
               <.metric label="Root" value={root_label(@epoch)} />
               <.metric label="Energy" value={@epoch.energy} />
               <.metric label="Density" value={@epoch.density} />
               <.metric label="Chord" value={format_atom(@epoch.chord_shape)} />
               <.metric label="Transition" value={transition_label(@epoch.transition)} />
+              <.metric label="Motif" value={@epoch.motif.name} />
+              <.metric
+                label="Transform"
+                value={format_transformations(@epoch.transformed_motif.transformations)}
+              />
               <.metric label="Tags" value={format_atoms(@current_scale.character_tags)} />
               <.metric label="Periods" value={format_atoms(@current_scale.period_affinity)} />
             </div>
           </div>
 
-          <div class="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-6">
+          <div class="min-w-0 rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5 sm:p-6">
             <p class="text-xs uppercase tracking-[0.3em] text-zinc-500">Adjacent Relationships</p>
             <div class="mt-5 grid gap-4">
               <div
                 :for={distance <- @distances}
-                class="rounded-xl border border-zinc-800 bg-zinc-950/70 p-4"
+                class="min-w-0 rounded-xl border border-zinc-800 bg-zinc-950/70 p-4"
               >
-                <div class="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
-                  <div>
+                <div class="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start">
+                  <div class="min-w-0">
                     <h3 class="text-lg font-semibold text-white">{distance.from} → {distance.to}</h3>
                     <p class="mt-1 text-sm text-zinc-400">
                       Strategy: {format_atoms(distance.recommended_strategies)}
                     </p>
                   </div>
-                  <p class="rounded-full bg-zinc-800 px-3 py-1 text-xs text-zinc-300">
+                  <p class="w-fit rounded-full bg-zinc-800 px-3 py-1 text-xs text-zinc-300 lg:justify-self-end">
                     shared {distance.shared_tones} / ratio {distance.shared_ratio}
                   </p>
                 </div>
 
-                <div class="mt-4 grid grid-cols-3 gap-3 text-sm">
+                <div class="mt-4 grid grid-cols-1 gap-3 text-sm sm:grid-cols-3">
                   <.metric label="Fifths" value={distance.circle_fifths_distance} />
                   <.metric label="Voice Cost" value={distance.voice_leading_cost} />
                   <.metric label="Vector" value={distance.interval_vector_similarity} />
@@ -136,9 +158,9 @@ defmodule ParaminimalWeb.SessionLive do
 
   defp metric(assigns) do
     ~H"""
-    <div class="rounded-lg bg-zinc-950/80 p-3">
+    <div class="min-w-0 rounded-lg bg-zinc-950/80 p-3">
       <p class="text-xs uppercase tracking-[0.2em] text-zinc-500">{@label}</p>
-      <p class="mt-2 break-words text-zinc-100">{@value}</p>
+      <p class="mt-2 min-w-0 break-words leading-6 text-zinc-100">{@value}</p>
     </div>
     """
   end
@@ -163,9 +185,20 @@ defmodule ParaminimalWeb.SessionLive do
       epoch_id: epoch.id,
       period: epoch.period.key,
       scale: epoch.scale.slug,
+      scale_intervals: epoch.scale.intervals,
       root: epoch.root,
       energy: epoch.energy,
       density: epoch.density,
+      motif: %{
+        id: epoch.motif.id,
+        name: epoch.motif.name,
+        source_degrees: epoch.motif.scale_degrees,
+        degrees: epoch.transformed_motif.scale_degrees,
+        rhythm: epoch.transformed_motif.rhythm,
+        octave: epoch.transformed_motif.octave,
+        transformations:
+          Enum.map(epoch.transformed_motif.transformations, &format_transformation/1)
+      },
       transition_zone: epoch.transition.zone,
       transition_progress: epoch.transition.progress
     }
@@ -186,6 +219,17 @@ defmodule ParaminimalWeb.SessionLive do
   defp format_zone(zone), do: format_atom(zone)
 
   defp format_atom(atom), do: atom |> Atom.to_string() |> String.replace("_", " ")
+
+  defp format_transformations([]), do: "identity"
+
+  defp format_transformations(transformations) do
+    transformations
+    |> Enum.map(&format_transformation/1)
+    |> Enum.join(", ")
+  end
+
+  defp format_transformation({operation, nil}), do: format_atom(operation)
+  defp format_transformation({operation, value}), do: "#{format_atom(operation)} #{value}"
 
   defp format_atoms(atoms) do
     atoms

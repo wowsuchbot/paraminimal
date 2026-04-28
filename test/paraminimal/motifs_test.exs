@@ -11,6 +11,7 @@ defmodule Paraminimal.MotifsTest do
       for period <- @periods do
         motifs = Motifs.for_period(period)
         count = length(motifs)
+
         assert count >= 3 and count <= 5,
                "#{period} has #{count} motifs, expected 3-5"
       end
@@ -43,6 +44,7 @@ defmodule Paraminimal.MotifsTest do
         for dur <- motif.rhythm do
           assert is_float(dur) or is_integer(dur),
                  "motif #{motif.id} has non-numeric rhythm value: #{inspect(dur)}"
+
           assert dur > 0,
                  "motif #{motif.id} has non-positive rhythm value: #{inspect(dur)}"
         end
@@ -66,8 +68,10 @@ defmodule Paraminimal.MotifsTest do
     test "all motifs have valid energy_range tuples" do
       for motif <- Motifs.all() do
         {lo, hi} = motif.energy_range
+
         assert is_float(lo) and is_float(hi),
                "motif #{motif.id} has invalid energy_range: #{inspect(motif.energy_range)}"
+
         assert lo < hi,
                "motif #{motif.id} energy_range low >= high: #{inspect(motif.energy_range)}"
       end
@@ -97,6 +101,7 @@ defmodule Paraminimal.MotifsTest do
     test "returns all six period keys" do
       keys = Motifs.period_keys()
       assert length(keys) == 6
+
       for period <- @periods do
         assert period in keys
       end

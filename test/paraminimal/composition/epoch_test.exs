@@ -20,6 +20,18 @@ defmodule Paraminimal.Composition.EpochTest do
     assert epoch.energy >= 0.0 and epoch.energy <= 1.0
     assert epoch.density >= 0.0 and epoch.density <= 1.0
     assert length(epoch.distances) == 3
+    assert epoch.motif.period_affinity == :afternoon
+    assert epoch.transformed_motif.source_id == epoch.motif.id
+    assert length(epoch.transformed_motif.scale_degrees) == length(epoch.transformed_motif.rhythm)
+    assert length(epoch.transformed_motif.transformations) == 1
+  end
+
+  test "motif selection is deterministic within the same epoch bucket" do
+    first = Epoch.for_datetime(datetime!("2026-04-28T13:01:00Z"))
+    same_bucket = Epoch.for_datetime(datetime!("2026-04-28T13:14:00Z"))
+
+    assert first.motif == same_bucket.motif
+    assert first.transformed_motif == same_bucket.transformed_motif
   end
 
   test "same_epoch? tracks quarter-hour epoch buckets" do

@@ -28,10 +28,11 @@ defmodule Paraminimal.Composition.MotifEngine do
   end
 
   def retrograde(%TransformedMotif{} = tm) do
-    %{tm |
-      scale_degrees: Enum.reverse(tm.scale_degrees),
-      rhythm: Enum.reverse(tm.rhythm),
-      transformations: tm.transformations ++ [{:retrograde, nil}]
+    %{
+      tm
+      | scale_degrees: Enum.reverse(tm.scale_degrees),
+        rhythm: Enum.reverse(tm.rhythm),
+        transformations: tm.transformations ++ [{:retrograde, nil}]
     }
   end
 
@@ -62,9 +63,10 @@ defmodule Paraminimal.Composition.MotifEngine do
       end)
       |> Enum.reverse()
 
-    %{tm |
-      scale_degrees: [pivot | inverted],
-      transformations: tm.transformations ++ [{:inversion, nil}]
+    %{
+      tm
+      | scale_degrees: [pivot | inverted],
+        transformations: tm.transformations ++ [{:inversion, nil}]
     }
   end
 
@@ -75,9 +77,10 @@ defmodule Paraminimal.Composition.MotifEngine do
   end
 
   def augmentation(%TransformedMotif{} = tm) do
-    %{tm |
-      rhythm: Enum.map(tm.rhythm, &(&1 * 2)),
-      transformations: tm.transformations ++ [{:augmentation, nil}]
+    %{
+      tm
+      | rhythm: Enum.map(tm.rhythm, &(&1 * 2)),
+        transformations: tm.transformations ++ [{:augmentation, nil}]
     }
   end
 
@@ -88,9 +91,10 @@ defmodule Paraminimal.Composition.MotifEngine do
   end
 
   def diminution(%TransformedMotif{} = tm) do
-    %{tm |
-      rhythm: Enum.map(tm.rhythm, &(&1 / 2)),
-      transformations: tm.transformations ++ [{:diminution, nil}]
+    %{
+      tm
+      | rhythm: Enum.map(tm.rhythm, &(&1 / 2)),
+        transformations: tm.transformations ++ [{:diminution, nil}]
     }
   end
 
@@ -101,9 +105,10 @@ defmodule Paraminimal.Composition.MotifEngine do
   end
 
   def transposition(%TransformedMotif{} = tm, offset) when is_integer(offset) do
-    %{tm |
-      scale_degrees: Enum.map(tm.scale_degrees, &(&1 + offset)),
-      transformations: tm.transformations ++ [{:transposition, offset}]
+    %{
+      tm
+      | scale_degrees: Enum.map(tm.scale_degrees, &(&1 + offset)),
+        transformations: tm.transformations ++ [{:transposition, offset}]
     }
   end
 
@@ -118,10 +123,7 @@ defmodule Paraminimal.Composition.MotifEngine do
     shift = Integer.mod(n, len)
     rotated = Enum.drop(tm.rhythm, shift) ++ Enum.take(tm.rhythm, shift)
 
-    %{tm |
-      rhythm: rotated,
-      transformations: tm.transformations ++ [{:additive_permutation, n}]
-    }
+    %{tm | rhythm: rotated, transformations: tm.transformations ++ [{:additive_permutation, n}]}
   end
 
   # ── Chain composition ─────────────────────────────────────────────
@@ -142,16 +144,36 @@ defmodule Paraminimal.Composition.MotifEngine do
   @spec apply_chain(Motif.t(), [{atom(), term()} | atom()]) :: TransformedMotif.t()
   def apply_chain(%Motif{} = motif, operations) when is_list(operations) do
     Enum.reduce(operations, TransformedMotif.from_motif(motif), fn
-      {:retrograde, _}, tm -> retrograde(tm)
-      {:inversion, _}, tm -> inversion(tm)
-      {:augmentation, _}, tm -> augmentation(tm)
-      {:diminution, _}, tm -> diminution(tm)
-      {:transposition, offset}, tm -> transposition(tm, offset)
-      {:additive_permutation, n}, tm -> additive_permutation(tm, n)
-      :retrograde, tm -> retrograde(tm)
-      :inversion, tm -> inversion(tm)
-      :augmentation, tm -> augmentation(tm)
-      :diminution, tm -> diminution(tm)
+      {:retrograde, _}, tm ->
+        retrograde(tm)
+
+      {:inversion, _}, tm ->
+        inversion(tm)
+
+      {:augmentation, _}, tm ->
+        augmentation(tm)
+
+      {:diminution, _}, tm ->
+        diminution(tm)
+
+      {:transposition, offset}, tm ->
+        transposition(tm, offset)
+
+      {:additive_permutation, n}, tm ->
+        additive_permutation(tm, n)
+
+      :retrograde, tm ->
+        retrograde(tm)
+
+      :inversion, tm ->
+        inversion(tm)
+
+      :augmentation, tm ->
+        augmentation(tm)
+
+      :diminution, tm ->
+        diminution(tm)
+
       op, _tm when is_atom(op) ->
         raise ArgumentError, "operation #{inspect(op)} requires an argument"
     end)
