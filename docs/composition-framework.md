@@ -324,20 +324,18 @@ The server is the **single source of truth** for what's happening compositionall
 
 ---
 
-## 7. Open Questions
+## 7. Resolved Questions
 
-These are design decisions to be made before or during implementation:
+1. **Period granularity** — ✅ 6 periods as sketched. Good starting point. Continuous time→character functions can be explored later without restructuring.
 
-1. **Period granularity** — 6 periods as sketched? Finer (every 2h)? Or should the system compose its own period boundaries based on a continuous time→character function?
+2. **Motif authoring** — ☐ Open. Hybrid approach likely — hand-composed seed motifs with procedural variation via canon operations. Decide in Phase 3a.
 
-2. **Motif authoring** — hand-composed seed motifs (clear intent, less variety) or procedurally generated from rules (more variety, less control)? Hybrid?
+3. **Cross-period motif referencing** — ☐ Open. The strange loop concept is core to the project (§4.3), but whether to enforce explicit reuse or let it emerge is a Phase 3a design decision.
 
-3. **Cross-period motif referencing** — should the system explicitly reuse motifs from previous periods (strange loop), or let it emerge from shared pools?
+4. **Interaction model** — ☐ Deferred to Phase 6. Architecture supports it; specifics TBD. NOT real-time influence — more like voting, nudging, or ambient presence.
 
-4. **Interaction model** — what can a listener *do*? Push energy? Shift root? Vote on next transition strategy? This is TBD but should inform the architecture from the start.
+5. **Epoch persistence** — ✅ Yes, save to Postgres. Enables moment NFTs and replay. Storage cost is negligible for epoch-sized records.
 
-5. **Epoch persistence** — save every epoch to Postgres for replay/reconstruction? This enables "moment NFTs" later but adds storage complexity.
+6. **Real-time constraints** — ✅ 220ms is sufficient. The server pushes *what* to play (scale, motif, density). SuperSonic handles audio-accurate scheduling client-side. Rhythmic tightness comes from the WASM audio clock, not the network.
 
-6. **Real-time constraints** — the current system polls at 220ms. Phoenix LiveView + PubSub can push at similar rates. Is this sufficient, or do we need sub-100ms for rhythmic tightness?
-
-7. **Geographic time** — should the time system use UTC, server local time, or the listener's local time? Using listener time means two people hear different music. Using UTC means a consistent global composition.
+7. **Geographic time** — ✅ Server UTC. Everyone hears the same composition — this is core to the shared-experience nature of the project. Listener-local time can be a future option, but it would mean different listeners hear different music, which changes the social contract.
