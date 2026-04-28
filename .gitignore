@@ -1,12 +1,22 @@
 # Elixir
 /_build
 /deps
+/cover/
+/doc/
+/.fetch
 *.ez
 *.beam
  erl_crash.dump
+/tmp/
+paraminimal-*.tar
 
 # Node (for assets)
 /assets/node_modules
+npm-debug.log
+
+# Phoenix assets
+/priv/static/assets/
+/priv/static/cache_manifest.json
 
 # Environment
 .env
