@@ -1,0 +1,95 @@
+# Paraminimal Agent Context
+
+Paraminimal is a generative multiplayer music experience: deterministic, time-synchronized, and endless.
+
+The intended architecture is:
+
+- Phoenix LiveView server renders UI and computes authoritative musical state.
+- Pure Elixir composition modules define scales, time periods, epochs, motifs, and transitions.
+- Browser-side SuperSonic runs the sound engine.
+- Postgres stores epoch/session history later.
+
+## Important Rules
+
+- Do not read, write, or create `.env` files. Ask the user to manage environment variables manually.
+- Keep musical logic in pure Elixir under `lib/paraminimal/composition/`.
+- Keep scale and motif data separate from engine logic.
+- Treat SuperSonic as a first-class runtime target, even when implementation work is server-side.
+- The server is the source of truth. Browser code renders audio/visual state; it should not become the composer.
+
+## Current State
+
+Read `docs/current-state.md` first.
+
+As of the current implementation:
+
+- Phase 1 is complete: Phoenix foundation, scale library, scale distance metrics, LiveView dashboard, and SuperSonic runtime boundary.
+- Phase 2 is complete: UTC global time system, deterministic epoch composer, periodic LiveView updates, and epoch tests.
+- The app runs at `http://localhost:4000` with `mix phx.server`.
+- The current test suite is expected to pass with `mix test`.
+
+## Key Files
+
+- `README.md`: high-level project summary.
+- `docs/current-state.md`: current implementation status.
+- `docs/composition-framework.md`: musical and architectural philosophy.
+- `docs/implementation-roadmap.md`: original phase roadmap.
+- `docs/project-structure.md`: intended structure.
+- `docs/getting-started.md`: setup commands.
+- `docs/phase-3-motifs-audio.md`: next major phase.
+- `docs/phase-4-transitions.md`: transition system plan.
+- `docs/phase-5-multiplayer-persistence.md`: Presence, PubSub, persistence plan.
+- `docs/phase-6-interaction-polish.md`: listener influence and polish plan.
+
+## Implemented Modules
+
+- `Paraminimal.Composition.Scale`
+- `Paraminimal.Composition.ScaleDistance`
+- `Paraminimal.Composition.TimeSystem`
+- `Paraminimal.Composition.Epoch`
+- `Paraminimal.Scales.Western`
+- `ParaminimalWeb.SessionLive`
+
+## Runtime Flow
+
+```text
+UTC clock
+  -> Composition.TimeSystem
+  -> Composition.Epoch
+  -> Scales.Western + ScaleDistance
+  -> SessionLive
+  -> browser SuperSonic runtime hook
+```
+
+## Development Commands
+
+```bash
+mix deps.get
+mix ecto.create
+mix phx.server
+mix test
+mix format
+```
+
+## Next Work
+
+The next recommended phase is Phase 3: Motifs & Audio.
+
+Start with a narrow audible slice:
+
+- Add period-specific motif data.
+- Add `Paraminimal.Composition.MotifEngine`.
+- Implement motif transformations in pure Elixir.
+- Send a compact deterministic audio payload to the existing SuperSonic runtime hook.
+- Produce one drone layer and one motif voice before adding richer texture.
+
+## Verification Expectations
+
+Before committing code changes, run:
+
+```bash
+mix format
+mix test
+```
+
+For docs-only changes, tests are optional unless nearby code changed.
