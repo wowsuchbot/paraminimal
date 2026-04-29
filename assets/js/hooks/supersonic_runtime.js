@@ -6,17 +6,32 @@ const SYNTHDEF_BASE_URL = "https://unpkg.com/supersonic-scsynth-synthdefs@0.66.0
 const MOTIF_SYNTH = "sonic-pi-beep"
 const DRONE_SYNTH = "sonic-pi-prophet"
 const UNIT_SECONDS = 0.25
-const FOUR_BAR_BEATS = 16
+const BAR_BEATS = 4
 const SUPERSONIC_BOOT_TIMEOUT_MS = 8_000
+const MAX_MELODIC_STEER_SEMITONES = 2
+const SCHEDULER_TICK_MS = 200
+const LOOKAHEAD_BARS = 1
+const ARRIVAL_BARS = 2
+const CURATED_GESTURE_POLICY = {
+  silence_as_arrival: {motifMode: "mute", droneMode: "drop_then_land"},
+  common_tone_drone_arrival: {motifMode: "sparse", droneMode: "common_tone"},
+  suspended_arrival: {motifMode: "sparse", droneMode: "suspended"},
+  modal_arrival: {motifMode: "normal", droneMode: "normal"},
+  deceptive_arrival: {motifMode: "normal", droneMode: "normal"},
+  rhythmic_drop_arrival: {motifMode: "drop", droneMode: "normal"},
+  authentic_cadence: {motifMode: "normal", droneMode: "normal"}
+}
 
 const SuperSonicRuntime = {
   mounted() {
     this.audioContext = null
     this.runtime = null
     this.latestState = null
-    this.loopTimer = null
+    this.schedulerTimer = null
     this.noteTimers = []
     this.isLooping = false
+    this.scheduledBars = new Set()
+    this.transportStartContextTime = null
     this.runtimeState = "waiting"
     this.statusMessage = "waiting for audio start"
     this.startButton = this.el.querySelector("#audio-start")
@@ -122,8 +137,11 @@ const SuperSonicRuntime = {
     }
 
     this.isLooping = true
+    this.transportStartContextTime = this.audioContext.currentTime + 0.08
+    this.scheduledBars.clear()
     this.syncButtonText()
-    this.scheduleLoopIteration()
+    this.runSchedulerTick()
+    this.schedulerTimer = setInterval(() => this.runSchedulerTick(), SCHEDULER_TICK_MS)
   },
 
   stopLoop() {
@@ -137,10 +155,12 @@ const SuperSonicRuntime = {
   restartLoop() {
     this.clearScheduledTimers()
     this.freeSuperSonicGroup()
-    this.scheduleLoopIteration()
+    this.transportStartContextTime = this.audioContext.currentTime + 0.08
+    this.scheduledBars.clear()
+    this.runSchedulerTick()
   },
 
-  scheduleLoopIteration() {
+  runSchedulerTick() {
     if (!this.isLooping) {
       return
     }
@@ -157,25 +177,41 @@ const SuperSonicRuntime = {
       return
     }
 
-    if (this.runtime.kind === "supersonic") {
-      this.scheduleSuperSonicLoop(state)
-    } else {
-      this.scheduleFallbackLoop(state)
+    const currentBarIndex = this.transportBarIndex()
+    const targetBarIndex = currentBarIndex + LOOKAHEAD_BARS
+
+    for (let barIndex = currentBarIndex; barIndex <= targetBarIndex; barIndex++) {
+      if (this.scheduledBars.has(barIndex)) continue
+
+      if (this.runtime.kind === "supersonic") {
+        this.scheduleSuperSonicBar(state, barIndex, currentBarIndex)
+      } else {
+        this.scheduleFallbackBar(state, barIndex, currentBarIndex)
+      }
+
+      this.scheduledBars.add(barIndex)
     }
-
-    this.loopTimer = setTimeout(() => this.scheduleLoopIteration(), this.loopDurationMs(state))
   },
 
-  scheduleSuperSonicLoop(state) {
-    this.setStatus(`playing SuperSonic: ${state.motif.name}`, "playing")
-    this.scheduleSuperSonicDrone(state)
-    this.scheduleSuperSonicMotif(state)
+  scheduleSuperSonicBar(state, barIndex, currentBarIndex) {
+    const transitionContext = this.transitionContextForBar(state, barIndex, currentBarIndex)
+    const gesture = transitionContext.arrivalGesture
+    const gestureText = transitionContext.arrivalWindow ? ` · gesture ${gesture}` : ""
+
+    this.setStatus(`playing SuperSonic: ${state.motif.name} (continuous${gestureText})`, "playing")
+    this.scheduleSuperSonicDroneBar(state, barIndex, currentBarIndex, transitionContext)
+    this.scheduleSuperSonicMotifBar(state, barIndex, currentBarIndex, transitionContext)
   },
 
-  scheduleSuperSonicMotif(state) {
+  scheduleSuperSonicMotifBar(state, barIndex, currentBarIndex, transitionContext) {
     const velocity = Math.max(0.16, Math.min(0.5, 0.18 + state.energy * 0.36))
+    const barStartAt = this.barStartContextTime(barIndex)
+    const motifEvents = this.applyGestureToMotifEvents(
+      this.motifEventsForBar(state, barIndex, currentBarIndex),
+      transitionContext
+    )
 
-    this.motifEvents(state).forEach((event) => {
+    motifEvents.forEach((event) => {
       const timer = setTimeout(() => {
         if (!this.isLooping || this.runtime?.kind !== "supersonic") return
 
@@ -194,77 +230,86 @@ const SuperSonicRuntime = {
           "release",
           Math.min(0.18, event.duration * 0.45)
         )
-      }, event.offset * 1000)
+      }, this.delayUntilContext(barStartAt + event.offset))
 
       this.noteTimers.push(timer)
     })
   },
 
-  scheduleSuperSonicDrone(state) {
-    const loopSeconds = this.loopDurationMs(state) / 1000
+  scheduleSuperSonicDroneBar(state, barIndex, currentBarIndex, transitionContext) {
+    const barDuration = this.barDurationSeconds()
     const amp = Math.max(0.05, Math.min(0.18, 0.06 + state.density * 0.12))
+    const barStartAt = this.barStartContextTime(barIndex)
+    const notes = this.applyGestureToDroneNotes(
+      this.droneNotesForBar(state, barIndex, currentBarIndex),
+      state,
+      transitionContext
+    )
 
-    this.droneEvents(state).forEach((event) => {
-      const timer = setTimeout(() => {
-        if (!this.isLooping || this.runtime?.kind !== "supersonic") return
+    if (notes.length === 0) return
 
-        event.notes.forEach((midi) => {
-          this.sendSuperSonic(
-            "/s_new",
-            DRONE_SYNTH,
-            -1,
-            1,
-            this.runtime.groupId,
-            "note",
-            midi,
-            "amp",
-            amp,
-            "sustain",
-            event.duration * 0.9,
-            "release",
-            Math.max(0.4, event.duration * 0.12)
-          )
-        })
-      }, event.offset * 1000)
+    const timer = setTimeout(() => {
+      if (!this.isLooping || this.runtime?.kind !== "supersonic") return
 
-      this.noteTimers.push(timer)
-    })
+      notes.forEach((midi) => {
+        this.sendSuperSonic(
+          "/s_new",
+          DRONE_SYNTH,
+          -1,
+          1,
+          this.runtime.groupId,
+          "note",
+          midi,
+          "amp",
+          amp,
+          "sustain",
+          barDuration * 0.9,
+          "release",
+          Math.max(0.4, barDuration * 0.12)
+        )
+      })
+    }, this.delayUntilContext(barStartAt))
+
+    this.noteTimers.push(timer)
   },
 
-  scheduleFallbackLoop(state) {
-    this.setStatus(`playing fallback preview: ${state.motif.name}`, "playing")
+  scheduleFallbackBar(state, barIndex, currentBarIndex) {
+    const transitionContext = this.transitionContextForBar(state, barIndex, currentBarIndex)
+    const gesture = transitionContext.arrivalGesture
+    const gestureText = transitionContext.arrivalWindow ? ` · gesture ${gesture}` : ""
+    this.setStatus(`playing fallback preview: ${state.motif.name} (continuous${gestureText})`, "playing")
 
     const context = this.runtime.audioContext
-    const startAt = context.currentTime + 0.08
     const velocity = Math.max(0.18, Math.min(0.55, 0.25 + state.energy * 0.4))
+    const barStartAt = this.barStartContextTime(barIndex)
+    const barDuration = this.barDurationSeconds()
 
-    this.scheduleFallbackDrone(context, state, startAt)
+    this.applyGestureToDroneNotes(
+      this.droneNotesForBar(state, barIndex, currentBarIndex),
+      state,
+      transitionContext
+    ).forEach((midi) => {
+      this.playFallbackTone(
+        context,
+        this.midiToFrequency(midi),
+        barStartAt,
+        barDuration,
+        Math.max(0.035, Math.min(0.12, 0.04 + state.density * 0.1)),
+        "sine"
+      )
+    })
 
-    this.motifEvents(state).forEach((event) => {
+    this.applyGestureToMotifEvents(
+      this.motifEventsForBar(state, barIndex, currentBarIndex),
+      transitionContext
+    ).forEach((event) => {
       this.playFallbackTone(
         context,
         this.midiToFrequency(event.midi),
-        startAt + event.offset,
+        barStartAt + event.offset,
         event.duration,
         velocity
       )
-    })
-  },
-
-  scheduleFallbackDrone(context, state, startAt) {
-    const velocity = Math.max(0.035, Math.min(0.12, 0.04 + state.density * 0.1))
-
-    this.droneEvents(state).forEach((event) => {
-      event.notes.forEach((midi) => {
-        this.playFallbackTone(
-          context,
-          this.midiToFrequency(midi),
-          startAt + event.offset,
-          event.duration,
-          velocity,
-          "sine"
-        )
-      })
     })
   },
 
@@ -284,31 +329,159 @@ const SuperSonicRuntime = {
     oscillator.stop(startAt + duration + 0.02)
   },
 
-  motifEvents(state) {
+  motifEventsForBar(state, barIndex, currentBarIndex) {
     const events = []
-    const loopSeconds = this.loopDurationMs(state) / 1000
-    const degrees = state?.motif?.degrees || []
-    const rhythm = state?.motif?.rhythm || []
-    let offset = 0
+    const barStartBeat = barIndex * BAR_BEATS
+    const barEndBeat = barStartBeat + BAR_BEATS
+    const motifPattern = this.motifPatternEvents(state)
+    const motifBeats = this.motifPatternBeats(state)
 
-    while (offset < loopSeconds - 0.001 && degrees.length > 0) {
-      for (let index = 0; index < degrees.length && offset < loopSeconds - 0.001; index++) {
-        const duration = Math.min(
-          Math.max(0.05, (rhythm[index] || 1) * UNIT_SECONDS),
-          loopSeconds - offset
-        )
+    if (motifPattern.length === 0 || motifBeats <= 0) {
+      return events
+    }
+
+    let cycle = Math.max(0, Math.floor(barStartBeat / motifBeats) - 1)
+
+    while (cycle * motifBeats < barEndBeat + motifBeats) {
+      const cycleOffset = cycle * motifBeats
+
+      motifPattern.forEach((patternEvent) => {
+        const onsetBeat = cycleOffset + patternEvent.onsetBeat
+        if (onsetBeat < barStartBeat || onsetBeat >= barEndBeat) return
 
         events.push({
-          offset,
-          duration,
-          midi: this.motifDegreeToMidi(state, degrees[index])
+          offset: (onsetBeat - barStartBeat) * UNIT_SECONDS,
+          duration: patternEvent.durationBeat * UNIT_SECONDS,
+          midi: patternEvent.midi,
+          barOffset: barIndex - currentBarIndex
         })
+      })
 
-        offset += duration
-      }
+      cycle += 1
+    }
+
+    return this.steerMotifEvents(events, state)
+  },
+
+  transitionContextForBar(state, barIndex, currentBarIndex) {
+    const transition = state?.transition_plan
+    const active = Boolean(transition?.active)
+    const durationBars = Math.max(1, transition?.duration_bars || 1)
+    const planBar = Math.max(1, (transition?.current_bar || 1) + (barIndex - currentBarIndex))
+    const clampedPlanBar = Math.min(planBar, durationBars)
+    const arrivalWindow = active && clampedPlanBar >= Math.max(1, durationBars - ARRIVAL_BARS + 1)
+    const arrivalGesture = transition?.arrival_gesture || "modal_arrival"
+
+    return {active, durationBars, planBar: clampedPlanBar, arrivalWindow, arrivalGesture}
+  },
+
+  applyGestureToMotifEvents(events, transitionContext) {
+    if (!transitionContext.arrivalWindow) return events
+    const policy = CURATED_GESTURE_POLICY[transitionContext.arrivalGesture] || CURATED_GESTURE_POLICY.modal_arrival
+
+    switch (policy.motifMode) {
+      case "mute":
+        return []
+      case "drop":
+        return events.filter((_, index) => index % 2 === 0)
+      case "sparse":
+        return events.filter((event, index) => index % 2 === 0 || event.offset === 0)
+      default:
+        return events
+    }
+  },
+
+  applyGestureToDroneNotes(notes, state, transitionContext) {
+    if (!transitionContext.arrivalWindow) return notes
+    const policy = CURATED_GESTURE_POLICY[transitionContext.arrivalGesture] || CURATED_GESTURE_POLICY.modal_arrival
+
+    switch (policy.droneMode) {
+      case "drop_then_land":
+        return transitionContext.planBar === transitionContext.durationBars ? this.rootFifthLanding(state) : []
+      case "common_tone":
+        return this.commonToneNotes(notes, state)
+      case "suspended":
+        return this.suspendedNotes(state)
+      default:
+        return notes
+    }
+  },
+
+  rootFifthLanding(state) {
+    const root = 36 + (state.root || 0)
+    return [root, root + 7]
+  },
+
+  commonToneNotes(notes, state) {
+    const sourcePitches = state?.transition_plan?.source?.pitch_classes || []
+    const destinationPitches = state?.transition_plan?.destination?.pitch_classes || []
+    const shared = sourcePitches.filter((pitch) => destinationPitches.includes(pitch))
+    const filtered = notes.filter((note) => shared.includes(Integer.mod(note, 12)))
+    return filtered.length > 0 ? filtered : notes
+  },
+
+  suspendedNotes(state) {
+    const root = 36 + (state.root || 0)
+    return [root, root + 5, root + 7]
+  },
+
+  motifPatternEvents(state) {
+    const events = []
+    const degrees = state?.motif?.degrees || []
+    const rhythm = state?.motif?.rhythm || []
+    let offsetBeat = 0
+
+    for (let index = 0; index < degrees.length; index++) {
+      const durationBeat = Math.max(0.25, rhythm[index] || 1)
+      events.push({
+        onsetBeat: offsetBeat,
+        durationBeat,
+        midi: this.motifDegreeToMidi(state, degrees[index])
+      })
+      offsetBeat += durationBeat
     }
 
     return events
+  },
+
+  steerMotifEvents(events, state) {
+    const transition = state?.transition_plan
+    const melodicPath = transition?.melodic_path || []
+
+    if (!transition?.active || melodicPath.length === 0) {
+      return events
+    }
+
+    return events.map((event) => {
+      const target = this.melodicTargetPitchClass(event, state, transition, melodicPath)
+      const steeredMidi = this.steerMidiTowardPitchClass(event.midi, target, MAX_MELODIC_STEER_SEMITONES)
+      return {...event, midi: steeredMidi}
+    })
+  },
+
+  melodicTargetPitchClass(event, state, transition, melodicPath) {
+    const durationBars = Math.max(1, transition.duration_bars || 1)
+    const progressBar = Math.min(durationBars, Math.max(1, (transition.current_bar || 1) + event.barOffset))
+    const pathIndex = Math.min(
+      melodicPath.length - 1,
+      Math.floor(((progressBar - 1) * melodicPath.length) / durationBars)
+    )
+    const target = melodicPath[pathIndex]
+
+    return Number.isInteger(target?.target_pitch_class)
+      ? target.target_pitch_class
+      : Integer.mod(state.root || 0, 12)
+  },
+
+  steerMidiTowardPitchClass(sourceMidi, targetPitchClass, maxShift) {
+    const candidates = [-12, 0, 12].map((octave) => targetPitchClass + octave)
+    const nearest = candidates.reduce((best, candidate) => {
+      return Math.abs(sourceMidi - candidate) < Math.abs(sourceMidi - best) ? candidate : best
+    }, candidates[0])
+
+    const delta = nearest - sourceMidi
+    const clamped = Math.max(-maxShift, Math.min(maxShift, delta))
+    return sourceMidi + clamped
   },
 
   motifDegreeToMidi(state, degree) {
@@ -321,30 +494,19 @@ const SuperSonicRuntime = {
       .map((midi) => (midi < 38 ? midi + 12 : midi))
   },
 
-  droneEvents(state) {
+  droneNotesForBar(state, barIndex, currentBarIndex) {
     const transition = state?.transition_plan
     const harmonicPath = transition?.harmonic_path || []
     const voicedPath = harmonicPath.filter((waypoint) => Array.isArray(waypoint?.voicing?.notes))
 
     if (!transition?.active || voicedPath.length === 0) {
-      return [{offset: 0, duration: this.loopDurationMs(state) / 1000, notes: this.chordMidiNotes(state)}]
+      return this.chordMidiNotes(state)
     }
 
-    const loopSeconds = this.loopDurationMs(state) / 1000
-    const barsPerLoop = 4
-    const barSeconds = loopSeconds / barsPerLoop
-    const startBar = Math.max(1, transition.current_bar || 1)
-
-    return Array.from({length: barsPerLoop}, (_value, index) => {
-      const bar = Math.min(startBar + index, voicedPath.length)
-      const waypoint = voicedPath[Math.max(0, bar - 1)] || voicedPath[voicedPath.length - 1]
-
-      return {
-        offset: index * barSeconds,
-        duration: barSeconds,
-        notes: waypoint.voicing.notes
-      }
-    })
+    const planBar = Math.max(1, (transition.current_bar || 1) + (barIndex - currentBarIndex))
+    const clampedBar = Math.min(planBar, voicedPath.length)
+    const waypoint = voicedPath[Math.max(0, clampedBar - 1)] || voicedPath[voicedPath.length - 1]
+    return waypoint.voicing.notes
   },
 
   chordDegrees(chordShape) {
@@ -374,12 +536,25 @@ const SuperSonicRuntime = {
     return intervals[index] + octave * 12
   },
 
-  loopDurationMs(state) {
-    const motifBeats = (state?.motif?.rhythm || []).reduce((sum, value) => sum + value, 0)
-    const motifMs = Math.max(1, motifBeats * UNIT_SECONDS * 1000)
-    const fourBarsMs = FOUR_BAR_BEATS * UNIT_SECONDS * 1000
+  motifPatternBeats(state) {
+    return (state?.motif?.rhythm || []).reduce((sum, value) => sum + value, 0)
+  },
 
-    return Math.max(fourBarsMs, Math.ceil(fourBarsMs / motifMs) * motifMs)
+  barDurationSeconds() {
+    return BAR_BEATS * UNIT_SECONDS
+  },
+
+  transportBarIndex() {
+    const elapsedSeconds = Math.max(0, this.audioContext.currentTime - this.transportStartContextTime)
+    return Math.floor(elapsedSeconds / this.barDurationSeconds())
+  },
+
+  barStartContextTime(barIndex) {
+    return this.transportStartContextTime + barIndex * this.barDurationSeconds()
+  },
+
+  delayUntilContext(targetContextTime) {
+    return Math.max(0, Math.round((targetContextTime - this.audioContext.currentTime) * 1000))
   },
 
   midiToFrequency(midi) {
@@ -387,10 +562,11 @@ const SuperSonicRuntime = {
   },
 
   clearScheduledTimers() {
-    clearTimeout(this.loopTimer)
-    this.loopTimer = null
+    clearInterval(this.schedulerTimer)
+    this.schedulerTimer = null
     this.noteTimers.forEach((timer) => clearTimeout(timer))
     this.noteTimers = []
+    this.scheduledBars.clear()
   },
 
   freeSuperSonicGroup() {

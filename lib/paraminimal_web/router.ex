@@ -18,6 +18,7 @@ defmodule ParaminimalWeb.Router do
     pipe_through :browser
 
     live "/", SessionLive, :show
+    live "/compose", ComposeLive, :show
   end
 
   # Other scopes may use custom stacks.

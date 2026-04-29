@@ -241,9 +241,26 @@ defmodule ParaminimalWeb.SessionLive do
       path_technique: plan.path_technique,
       arrival_gesture: plan.arrival_gesture,
       strategies: plan.strategies,
-      source: Map.take(plan.source, [:period, :scale, :root, :chord_shape, :energy, :density]),
+      source:
+        Map.take(plan.source, [
+          :period,
+          :scale,
+          :root,
+          :chord_shape,
+          :energy,
+          :density,
+          :pitch_classes
+        ]),
       destination:
-        Map.take(plan.destination, [:period, :scale, :root, :chord_shape, :energy, :density]),
+        Map.take(plan.destination, [
+          :period,
+          :scale,
+          :root,
+          :chord_shape,
+          :energy,
+          :density,
+          :pitch_classes
+        ]),
       harmonic_path: plan.harmonic_path,
       melodic_path: plan.melodic_path,
       rhythmic_gesture: plan.rhythmic_gesture
