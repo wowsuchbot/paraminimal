@@ -66,17 +66,17 @@ defmodule ParaminimalWeb.SessionLive do
               class="min-w-0 rounded-2xl border border-cyan-400/30 bg-cyan-400/10 p-5 shadow-2xl shadow-cyan-950/40"
             >
               <p class="text-xs uppercase tracking-[0.3em] text-cyan-200">Audio Runtime</p>
-              <h2 class="mt-3 text-2xl font-semibold text-white">Browser audio preview</h2>
+              <h2 class="mt-3 text-2xl font-semibold text-white">SuperSonic audio</h2>
               <p class="mt-3 text-sm leading-6 text-cyan-50/80">
-                Starts a simple in-browser preview from the current epoch. SuperSonic scheduling comes
-                next; its compatible mode does not require special headers.
+                Starts a four-bar loop from the current epoch. It tries SuperSonic in compatible
+                postMessage mode first, then falls back to a simple browser preview if needed.
               </p>
               <button
                 id="audio-start"
                 type="button"
                 class="mt-5 inline-flex max-w-full items-center justify-center rounded-full bg-cyan-300 px-5 py-2 text-center text-sm font-semibold text-zinc-950 transition hover:bg-cyan-200"
               >
-                Start 4-Bar Preview Loop
+                Start 4-Bar Audio Loop
               </button>
               <p id="audio-runtime-status" class="mt-4 text-sm text-cyan-100">
                 Status: waiting for audio start
@@ -110,6 +110,7 @@ defmodule ParaminimalWeb.SessionLive do
               <.metric label="Density" value={@epoch.density} />
               <.metric label="Chord" value={format_atom(@epoch.chord_shape)} />
               <.metric label="Transition" value={transition_label(@epoch.transition)} />
+              <.metric label="Transition Plan" value={format_transition_plan(@epoch.transition_plan)} />
               <.metric label="Motif" value={@epoch.motif.name} />
               <.metric
                 label="Transform"
@@ -189,6 +190,7 @@ defmodule ParaminimalWeb.SessionLive do
       root: epoch.root,
       energy: epoch.energy,
       density: epoch.density,
+      chord_shape: epoch.chord_shape,
       motif: %{
         id: epoch.motif.id,
         name: epoch.motif.name,
@@ -200,7 +202,8 @@ defmodule ParaminimalWeb.SessionLive do
           Enum.map(epoch.transformed_motif.transformations, &format_transformation/1)
       },
       transition_zone: epoch.transition.zone,
-      transition_progress: epoch.transition.progress
+      transition_progress: epoch.transition.progress,
+      transition_plan: transition_plan_state(epoch.transition_plan)
     }
   end
 
@@ -214,6 +217,37 @@ defmodule ParaminimalWeb.SessionLive do
          progress: progress
        }) do
     "#{minutes}m to #{next_period.name} · #{progress}"
+  end
+
+  defp format_transition_plan(%{phase: :stable}), do: "stable"
+
+  defp format_transition_plan(%{
+         phase: phase,
+         current_bar: current_bar,
+         duration_bars: duration_bars,
+         path_technique: path_technique,
+         arrival_gesture: arrival_gesture
+       }) do
+    "#{format_atom(phase)} · bar #{current_bar}/#{duration_bars} · #{format_atom(path_technique)} → #{format_atom(arrival_gesture)}"
+  end
+
+  defp transition_plan_state(plan) do
+    %{
+      active: plan.active?,
+      phase: plan.phase,
+      progress: plan.progress,
+      duration_bars: plan.duration_bars,
+      current_bar: plan.current_bar,
+      path_technique: plan.path_technique,
+      arrival_gesture: plan.arrival_gesture,
+      strategies: plan.strategies,
+      source: Map.take(plan.source, [:period, :scale, :root, :chord_shape, :energy, :density]),
+      destination:
+        Map.take(plan.destination, [:period, :scale, :root, :chord_shape, :energy, :density]),
+      harmonic_path: plan.harmonic_path,
+      melodic_path: plan.melodic_path,
+      rhythmic_gesture: plan.rhythmic_gesture
+    }
   end
 
   defp format_zone(zone), do: format_atom(zone)

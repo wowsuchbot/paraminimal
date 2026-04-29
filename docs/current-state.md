@@ -1,12 +1,10 @@
 # Current State
 
-Last updated after Phase 3b.
+Last updated after the Phase 4 chord-vocabulary and voicing slice.
 
 ## Summary
 
-Paraminimal is now a runnable Phoenix LiveView application with a pure Elixir composition core. The app computes a shared UTC-derived musical epoch, selects and transforms a period motif deterministically, and renders epoch state on the root page.
-
-The project does not yet produce SuperSonic audio. A browser runtime hook exists so the audio integration has a clear place to attach in Phase 3.
+Paraminimal is now a runnable Phoenix LiveView application with a pure Elixir composition core, first real browser audio, and composed transition planning. The app computes a shared UTC-derived musical epoch, selects and transforms a period motif deterministically, renders epoch state on the root page, can play a SuperSonic-powered four-bar motif/drone loop from the current composition payload, and now builds deterministic multi-bar transition plans with chord vocabulary-backed voiced harmonic waypoints near period boundaries.
 
 ## Implemented
 
@@ -29,6 +27,10 @@ Implemented under `lib/paraminimal/composition/`:
 - `Motif`: period-affined melodic fragments represented as scale degrees and relative rhythm.
 - `MotifEngine`: pure canon transformations and lineage tracking.
 - `TransformedMotif`: transformed motif state with source id and transformation chain.
+- `ChordVocabulary`: modal chord roles, scale masks, characteristic tones, arrivals, and avoid-note metadata.
+- `Transition`: composed multi-bar path from source musical state to destination state.
+- `TransitionStrategy`: deterministic strategy palette for harmonic, melodic, and rhythmic transition intent.
+- `Voicing`: deterministic low/mid-register voicing pass for transition waypoints.
 
 Implemented under `lib/paraminimal/scales/`:
 
@@ -50,21 +52,26 @@ The root page displays:
 - Energy and density.
 - Chord shape.
 - Transition status.
+- Transition plan phase, bar position, path technique, and arrival gesture.
 - Adjacent/next-period scale relationship metrics.
-- SuperSonic runtime start control.
+- SuperSonic runtime start/stop control.
 
-The LiveView refreshes every 15 seconds and pushes compact `composition_state` payloads to the browser hook for future audio scheduling.
+The LiveView refreshes every 15 seconds and pushes compact `composition_state` payloads to the browser hook for audio scheduling.
 
 ### SuperSonic Boundary
 
 Implemented in `assets/js/hooks/supersonic_runtime.js`:
 
 - Owns user-gesture audio startup.
-- Creates an `AudioContext` fallback.
-- Detects a future `window.SuperSonic` runtime if present.
+- Imports `supersonic-scsynth` from the assets npm package.
+- Initializes SuperSonic in compatible `postMessage` mode.
+- Loads built-in Sonic Pi synthdefs for one motif voice and one drone voice.
 - Receives `composition_state` events from LiveView.
-- Plays a simple `AudioContext` fallback motif line from server-computed state.
-- Leaves real OSC/SuperSonic scheduling for the next Phase 3 slice.
+- Plays a four-bar motif loop through SuperSonic from server-computed motif degrees, rhythm, root, and scale state.
+- Adds a sustained drone voice from epoch root, scale intervals, density, energy, and chord shape.
+- During active transitions, renders drone/pad motion from server-voiced harmonic waypoints.
+- Keeps an `AudioContext` fallback preview if SuperSonic cannot initialize.
+- Keeps button and status text synced across LiveView re-renders.
 
 SuperSonic has two relevant serving modes:
 
@@ -82,20 +89,24 @@ Current suite covers:
 - Epoch determinism.
 - Motif definitions.
 - Motif transformations.
+- Chord vocabulary scale masks and avoid-note metadata.
+- Deterministic low/mid-register voicing.
+- Transition path enrichment with voiced harmonic waypoints.
 - LiveView rendering.
 
 Latest known result:
 
 ```bash
-mix test
-# 49 tests, 0 failures
+mix assets.build && mix test
+# 59 tests, 0 failures
 ```
 
 ## Not Implemented Yet
 
-- Real SuperSonic package/runtime integration.
-- SynthDefs or OSC scheduling.
-- Transition state machine beyond boundary detection.
+- Viz rack.
+- Production-local serving strategy for SuperSonic engine/synthdef assets.
+- Audio-accurate scheduling beyond the current JavaScript timer loop.
+- Full transition audio rendering: guide-tone melody, glides, rhythmic fills, silence arrivals, and progressive chord changes.
 - PubSub/shared epoch process.
 - Presence/listener tracking.
 - Epoch persistence schemas.
@@ -116,11 +127,11 @@ Do not read or edit `.env` files. If environment variables are needed, ask the u
 
 ## Next Recommended Work
 
-Phase 3c: Real SuperSonic Scheduling.
+Continue Phase 4: Transitions.
 
-Start narrow:
+The chord-vocabulary and voicing layer is in place. Next implementation should deepen Phase 4 audio response:
 
-- Replace the fallback oscillator path with real SuperSonic initialization.
-- Translate epoch and motif state into OSC/SuperSonic messages for one drone and one motif voice.
-- Keep the fallback path for graceful failure while SuperSonic integration stabilizes.
-- Keep all musical decisions server-computed and deterministic.
+- Map `transition_plan.melodic_path` to guide-tone motif behavior.
+- Render `transition_plan.rhythmic_gesture` as optional fill/break/percussion material.
+- Add more intentional arrival handling in SuperSonic for `arrival_gesture`.
+- Keep the server as composer; browser/SuperSonic remains the renderer.

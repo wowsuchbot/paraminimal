@@ -1,0 +1,7 @@
+{
+  "dependencies": {
+    "supersonic-scsynth": "^0.66.0",
+    "supersonic-scsynth-core": "^0.66.0",
+    "supersonic-scsynth-synthdefs": "^0.66.0"
+  }
+}

@@ -6,6 +6,7 @@ defmodule Paraminimal.Composition.Epoch do
   alias Paraminimal.Composition.Scale
   alias Paraminimal.Composition.ScaleDistance
   alias Paraminimal.Composition.TimeSystem
+  alias Paraminimal.Composition.Transition
   alias Paraminimal.Composition.TransformedMotif
   alias Paraminimal.Motifs
   alias Paraminimal.Composition.Motif
@@ -26,6 +27,7 @@ defmodule Paraminimal.Composition.Epoch do
           density: float(),
           motif: Motif.t(),
           transformed_motif: TransformedMotif.t(),
+          transition_plan: Transition.t(),
           distances: [ScaleDistance.t()]
         }
 
@@ -43,6 +45,7 @@ defmodule Paraminimal.Composition.Epoch do
     :density,
     :motif,
     :transformed_motif,
+    :transition_plan,
     :distances
   ]
 
@@ -61,8 +64,11 @@ defmodule Paraminimal.Composition.Epoch do
     root = root_for(utc, period)
     scale = scale_for(utc, period, root)
     next_root = root_for(utc, next_period)
+    next_scale = scale_for(utc, next_period, next_root)
     energy = profile_value(period.energy_profile, progress)
     density = profile_value(period.density_profile, progress)
+    next_energy = profile_value(next_period.energy_profile, 0.0)
+    next_density = profile_value(next_period.density_profile, 0.0)
     motif = motif_for(utc, period, energy)
     transformed_motif = transform_motif(utc, motif)
 
@@ -70,6 +76,23 @@ defmodule Paraminimal.Composition.Epoch do
       next_period.scale_candidates
       |> Enum.map(&Western.get!(&1, next_root))
       |> Enum.map(&ScaleDistance.between(scale, &1))
+
+    transition_plan =
+      Transition.compose(%{
+        time_transition: transition,
+        source:
+          musical_state(period, scale, root, chord_shape_for(period, scale), energy, density),
+        destination:
+          musical_state(
+            next_period,
+            next_scale,
+            next_root,
+            chord_shape_for(next_period, next_scale),
+            next_energy,
+            next_density
+          ),
+        distance: ScaleDistance.between(scale, next_scale)
+      })
 
     %__MODULE__{
       id: epoch_id(utc),
@@ -85,6 +108,7 @@ defmodule Paraminimal.Composition.Epoch do
       density: density,
       motif: motif,
       transformed_motif: transformed_motif,
+      transition_plan: transition_plan,
       distances: distances
     }
   end
@@ -155,6 +179,19 @@ defmodule Paraminimal.Composition.Epoch do
   defp chord_shape_for(%{key: :afternoon}, _scale), do: :sixth
   defp chord_shape_for(%{key: :twilight}, _scale), do: :seventh
   defp chord_shape_for(%{key: :night}, _scale), do: :suspended
+
+  defp musical_state(period, scale, root, chord_shape, energy, density) do
+    %{
+      period: period.key,
+      scale: scale.slug,
+      root: root,
+      root_name: Scale.note_name(root),
+      chord_shape: chord_shape,
+      energy: energy,
+      density: density,
+      pitch_classes: Scale.pitch_classes(scale)
+    }
+  end
 
   defp profile_value(profile, progress) do
     profile

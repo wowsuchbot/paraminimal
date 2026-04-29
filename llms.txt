@@ -27,7 +27,8 @@ As of the current implementation:
 - Phase 1 is complete: Phoenix foundation, scale library, scale distance metrics, LiveView dashboard, and SuperSonic runtime boundary.
 - Phase 2 is complete: UTC global time system, deterministic epoch composer, periodic LiveView updates, and epoch tests.
 - Phase 3a is complete: period-specific motifs, motif registry, canon transformations, and motif lineage tests.
-- Phase 3b is complete: deterministic motif selection in epochs, motif data in `composition_state`, and an `AudioContext` fallback motif voice.
+- Phase 3b first-audio slice is complete: deterministic motif selection in epochs, motif data in `composition_state`, real SuperSonic `postMessage` playback for one motif voice plus one drone voice, and an `AudioContext` fallback path.
+- Phase 4 has started: `Transition` and `TransitionStrategy` build deterministic composed transition plans with phase, duration in bars, harmonic path, melodic path, rhythmic gesture, and selected strategies. `ChordVocabulary` and `Voicing` now enrich harmonic waypoints with modal chord roles, scale masks, avoid-note metadata, and concrete low/mid-register notes.
 - The app runs at `http://localhost:4323` with `mix phx.server` unless `PORT` is set.
 - The current test suite is expected to pass with `mix test`.
 
@@ -53,6 +54,10 @@ As of the current implementation:
 - `Paraminimal.Composition.Motif`
 - `Paraminimal.Composition.MotifEngine`
 - `Paraminimal.Composition.TransformedMotif`
+- `Paraminimal.Composition.ChordVocabulary`
+- `Paraminimal.Composition.Transition`
+- `Paraminimal.Composition.TransitionStrategy`
+- `Paraminimal.Composition.Voicing`
 - `Paraminimal.Scales.Western`
 - `Paraminimal.Motifs`
 - `ParaminimalWeb.SessionLive`
@@ -81,13 +86,15 @@ mix format
 
 ## Next Work
 
-The next recommended phase is Phase 3c: Real SuperSonic Scheduling.
+The next recommended work is to continue Phase 4 audio response.
 
-Start with a narrow audible slice:
+The first Phase 4 code slice is implemented in pure Elixir: `Paraminimal.Composition.Transition`, deterministic state phases, strategy selection, path planning, and tests.
 
-- Replace the fallback oscillator path with real SuperSonic initialization and OSC scheduling.
-- Use the existing compact audio payload from `SessionLive`.
-- Produce one SuperSonic drone layer and one motif voice before adding richer texture.
+Architectural direction for Phase 4: transitions are composed musical paths, not only fades or state flags. A transition may last several bars and can include progressive chord changes, melodic guide-tone paths through source and destination scales, rhythmic fills, soft tom rolls, cut-up breakbeats, minimal techno percussion/fx gestures, or silence as an intentional arrival. Keep this path planned server-side and deterministic; browser/SuperSonic should render the transition plan.
+
+Current SuperSonic behavior consumes voiced `transition_plan.harmonic_path` for drone/pad movement during active transitions. Next Phase 4 work should shape motif/guide tones from `melodic_path`, add optional rhythmic gestures for fills or dissolves, and make `arrival_gesture` audible.
+
+Architecture decision: calculate transition path first, then apply deterministic voice-leading/voicing as a post-process. Path planning chooses technique, arrival gesture, roots, scales, harmonic waypoints, melodic guide tones, and rhythmic gestures. A later voicing pass turns that path into concrete notes using modal chord vocabularies, register rules, and avoid-note handling.
 
 ## Verification Expectations
 
